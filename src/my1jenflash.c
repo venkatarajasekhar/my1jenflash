@@ -10,7 +10,7 @@
 /*----------------------------------------------------------------------------*/
 #define COMMAND_NONE 0
 #define COMMAND_SCAN 1
-#define COMMAND_DEVICE 2
+#define COMMAND_INFO 2
 #define COMMAND_WRITE 3
 #define COMMAND_VERIFY 4
 /*----------------------------------------------------------------------------*/
@@ -100,14 +100,30 @@ int write_device(ASerialPort_t* aPort, ADeviceJEN_t* aDevice)
 	int error = JEN_MSG_OK;
 	if(!aDevice->pfilename)
 	{
-		printf("No programming file selected!\n");
+		printf("No program file selected!\n");
 		return ERROR_NO_PGMFILE;
 	}
-	printf("Writing programing file '%s'... ",aDevice->pfilename);
+	printf("Writing program file '%s'... ",aDevice->pfilename);
 	fflush(stdout);
 	error = jen_device_flash(aPort, aDevice);
 	if(!error) printf("Done!\n");
-	else printf("\nError programming device! (%d)\n",error);
+	else printf("\nError flashing device! (%d)\n",error);
+	return error;
+}
+/*----------------------------------------------------------------------------*/
+int verify_device(ASerialPort_t* aPort, ADeviceJEN_t* aDevice)
+{
+	int error = JEN_MSG_OK;
+	if(!aDevice->pfilename)
+	{
+		printf("No program file selected!\n");
+		return ERROR_NO_PGMFILE;
+	}
+	printf("Verifying programing file '%s'... ",aDevice->pfilename);
+	fflush(stdout);
+	error = jen_device_verify(aPort, aDevice);
+	if(!error) printf("Done!\n");
+	else printf("\nVerification error! (%d)\n",error);
 	return error;
 }
 /*----------------------------------------------------------------------------*/
@@ -187,7 +203,7 @@ int main(int argc, char* argv[])
 					printf("Multiple commands '%s'!(%d)\n",argv[loop],do_command);
 					return ERROR_MULTI_CMD;
 				}
-				do_command = COMMAND_DEVICE;
+				do_command = COMMAND_INFO;
 			}
 			else if(!strcmp(argv[loop],"write"))
 			{
@@ -197,6 +213,15 @@ int main(int argc, char* argv[])
 					return ERROR_MULTI_CMD;
 				}
 				do_command = COMMAND_WRITE;
+			}
+			else if(!strcmp(argv[loop],"verify"))
+			{
+				if(do_command!=COMMAND_NONE)
+				{
+					printf("Multiple commands '%s'!(%d)\n",argv[loop],do_command);
+					return ERROR_MULTI_CMD;
+				}
+				do_command = COMMAND_VERIFY;
 			}
 			else
 			{
@@ -249,7 +274,7 @@ int main(int argc, char* argv[])
 	/** try to execute given command */
 	switch(do_command)
 	{
-		case COMMAND_DEVICE:
+		case COMMAND_INFO:
 			/** init device structure? */
 			jen_device_init(&cDevice);
 			/* get device info */
@@ -267,6 +292,19 @@ int main(int argc, char* argv[])
 			}
 			/* program device */
 			write_device(&cPort,&cDevice);
+			break;
+		case COMMAND_VERIFY:
+			/** init device structure? */
+			jen_device_init(&cDevice);
+			/** check filename! */
+			if(pfile) cDevice.pfilename = pfile;
+			else
+			{
+				printf("No filename given! Aborting!\n");
+				break;
+			}
+			/* verify program on device */
+			verify_device(&cPort,&cDevice);
 			break;
 		case COMMAND_NONE:
 			printf("No command given! Exiting!\n");

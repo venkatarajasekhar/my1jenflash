@@ -6,22 +6,22 @@
 #include <string.h>
 /*----------------------------------------------------------------------------*/
 static jen_flash_id_t FLASH_DEVS[] = {
-	{4,0x05,0x05,"ST M25P05-A"},
-	{0,0x10,0x10,"ST M25P10-A"},
-	{5,0x11,0x11,"ST M25P20-A"},
-	{1,0xBF,0x49,"SST 25VF010A"},
-	{2,0x1F,0x60,"Atmel 25F512"},
-	{8,0xCC,0xEE,"Internal Flash (JN516x)"},
-	{3,0x12,0x12,"ST M25P40"}
+	{4,0x05,0x05,0x08000*2,"ST M25P05-A"},
+	{0,0x10,0x10,0x08000*4,"ST M25P10-A"},
+	{5,0x11,0x11,0x08000*8,"ST M25P20-A"},
+	{1,0xBF,0x49,0x08000*4,"SST 25VF010A"},
+	{2,0x1F,0x60,0x08000*2,"Atmel 25F512"},
+	{8,0xCC,0xEE,0x08000*4,"Internal Flash (JN516x)"},
+	{3,0x12,0x12,0x10000*8,"ST M25P40"}
 };
 /*----------------------------------------------------------------------------*/
 static int FLASH_DEVS_SIZE = sizeof(FLASH_DEVS)/sizeof(jen_flash_id_t);
 /*----------------------------------------------------------------------------*/
 static jen_dev_id_t JENNIC_DEVS[] = {
-	{0x10804686,"JN5148(MINE)"},
-	{0x10002000,"JN5139"},
-	{0x00005686,"JN5142"},
-	{0x10404686,"JN5148"}
+	{0x10804686,0x0000,"JN5148(MINE)"},
+	{0x10002000,0x0000,"JN5139"},
+	{0x00005686,0x0000,"JN5142"},
+	{0x10404686,0x0000,"JN5148"}
 };
 /*----------------------------------------------------------------------------*/
 static int JENNIC_DEVS_SIZE = sizeof(JENNIC_DEVS)/sizeof(jen_dev_id_t);
@@ -195,7 +195,7 @@ int jen_select_flash(ASerialPort_t* aPort, ADeviceJEN_t* aDevice)
 	aDevice->message.type = JEN_MSG_FLASH_SELECT_REQ;
 	aDevice->message.data[0] = aDevice->pflash->jen_id;
 	paddr = (unsigned int*) &aDevice->message.data[1];
-	*paddr = 0x00000000; /** always from here? */
+	*paddr = 0x00000000; /** set to zero */
 	jen_build_sum(&aDevice->message);
 	/* send request */
 	jen_send_msg(aPort,&aDevice->message);
@@ -295,9 +295,7 @@ int jen_device_flash(ASerialPort_t* aPort, ADeviceJEN_t* aDevice)
 	void *pbuff;
 	FILE *pbinfile;
 	int error = JEN_MSG_OK;
-	unsigned int buffsize, codeaddr;
-	unsigned int tellsize, tellthis;
-	unsigned int *paddr;
+	unsigned int tellsize, tellthis = 0, buffsize, *paddr;
 	/* get id */
 	error = jen_device_info(aPort,aDevice);
 	if(error) return error+JEN_MSG_OFF_DEVICE_INFO;
@@ -314,28 +312,115 @@ int jen_device_flash(ASerialPort_t* aPort, ADeviceJEN_t* aDevice)
 	pbinfile = fopen(aDevice->pfilename,"rb");
 	if(!pbinfile) return JEN_MSG_EFOPEN;
 	/* get actual binary size */
-	/** check device size? */
 	fseek(pbinfile, 0L, SEEK_END);
 	tellsize = ftell(pbinfile);
 	fseek(pbinfile, 0L, SEEK_SET);
+	/** check device size */
+	/*buffsize = aDevice->pflash->dev_size;
+	if(tellsize>buffsize)
+	{
+		fclose(pbinfile);
+		return JEN_MSG_EPSIZE;
+	}*/
 	/* prepare to write */
 	pbuff = (void*) &aDevice->message.data[FLASH_WRITE_ADDR_SIZE];
 	paddr = (unsigned int*) aDevice->message.data;
-	codeaddr = 0x04000000; /** always from here? */
-	tellthis = 0;
 	while((buffsize=fread(pbuff,1,MAX_PROG_BUFFER,pbinfile))>0)
 	{
 		/* prepare message length here */
 		aDevice->message.length = FLASH_WRITE_REQ_LEN + buffsize;
-		*paddr = codeaddr + tellthis;
+		/* prepare write address */
+		*paddr = aDevice->pdevice->jen_code_start + tellthis;
 		/* write flash */
+		printf("%3d%%\b\b\b\b",tellthis*100/tellsize);
 		error = jen_write_flash(aPort,aDevice);
 		if(error) return error+JEN_MSG_OFF_FLASH_WRITE;
 		if(feof(pbinfile)) break;
-		/* prepare next write address */
 		tellthis += buffsize;
-		tellsize -= buffsize;
-		/* use tellthis/tellsize for indicator??? */
+	}
+	fclose(pbinfile);
+	return error;
+}
+/*----------------------------------------------------------------------------*/
+#define FLASH_READ_ADDR_SIZE 4
+#define FLASH_READ_REQ_LEN JEN_MSG_MINSIZE+6
+#define FLASH_READ_RES_LEN JEN_MSG_MINSIZE+1
+/*----------------------------------------------------------------------------*/
+int jen_read_flash(ASerialPort_t* aPort, ADeviceJEN_t* aDevice)
+{
+	int error = JEN_MSG_OK;
+	/* build request */
+	aDevice->message.type = JEN_MSG_FLASH_READ_REQ;
+	aDevice->message.length = FLASH_READ_REQ_LEN;
+	jen_build_sum(&aDevice->message);
+	/* send request */
+	jen_send_msg(aPort,&aDevice->message);
+	/* read response */
+	error = jen_read_msg(aPort,&aDevice->message);
+	if(error) return error;
+	/* check response */
+	error = jen_check_sum(&aDevice->message);
+	if(error) return JEN_MSG_ECHKSUM;
+	if(aDevice->message.type!=JEN_MSG_FLASH_READ_RES)
+		return JEN_MSG_ETYPE;
+	if(aDevice->message.data[JEN_MSG_STATUS_BYTE]!=JEN_MSG_RESP_OK)
+		return JEN_MSG_ERESPONSE;
+	return error;
+}
+/*----------------------------------------------------------------------------*/
+#define MAX_READ_BUFFER 128
+/*----------------------------------------------------------------------------*/
+int jen_device_verify(ASerialPort_t* aPort, ADeviceJEN_t* aDevice)
+{
+	void *pbuff;
+	FILE *pbinfile;
+	int error = JEN_MSG_OK, loop;
+	unsigned int tellsize, tellthis = 0, buffsize, *paddr;
+	unsigned short *pleng;
+	/* buffer for read flash data? */
+	unsigned char buff[MAX_READ_BUFFER];
+	/* get id */
+	error = jen_device_info(aPort,aDevice);
+	if(error) return error+JEN_MSG_OFF_DEVICE_INFO;
+	/* select flash */
+	error = jen_select_flash(aPort,aDevice);
+	if(error) return error+JEN_MSG_OFF_FLASH_SELECT;
+	/* read flash */
+	pbinfile = fopen(aDevice->pfilename,"rb");
+	if(!pbinfile) return JEN_MSG_EFOPEN;
+	/* get actual binary size */
+	fseek(pbinfile, 0L, SEEK_END);
+	tellsize = ftell(pbinfile);
+	fseek(pbinfile, 0L, SEEK_SET);
+	/** check device size */
+	/*buffsize = aDevice->pflash->dev_size;
+	if(tellsize>buffsize)
+	{
+		fclose(pbinfile);
+		return JEN_MSG_EPSIZE;
+	}*/
+	/* prepare to read & verify */
+	pbuff = (void*) buff;
+	paddr = (unsigned int*) aDevice->message.data;
+	pleng = (unsigned short*) &aDevice->message.data[FLASH_READ_ADDR_SIZE];
+	while((buffsize=fread(pbuff,1,MAX_READ_BUFFER,pbinfile))>0)
+	{
+		/* prepare message address & length here */
+		*paddr = aDevice->pdevice->jen_code_start + tellthis;
+		*pleng = (unsigned short) buffsize;
+		/* read flash */
+		printf("%3d%%\b\b\b\b",tellthis*100/tellsize);
+		error = jen_read_flash(aPort,aDevice);
+		if(error) return error+JEN_MSG_OFF_FLASH_READ;
+		if(feof(pbinfile)) break;
+		/* verify data */
+		for(loop=0;loop<(int)buffsize;loop++)
+		{
+			if(buff[loop]!=aDevice->message.data[loop+1])
+				return error+JEN_MSG_OFF_FLASH_READ;
+		}
+		/* prepare next read address */
+		tellthis += buffsize;
 	}
 	fclose(pbinfile);
 	return error;
