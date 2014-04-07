@@ -56,20 +56,25 @@
 #define JEN_MSG_OFF_FLASH_READ 120
 #define JEN_MSG_OFF_FLASH_VERIFY 140
 /*----------------------------------------------------------------------------*/
+#define JEN_DEV_CODE_ADDR 0x0000
+#define JEN_DEV_MAC_OSET 0x0030
+#define JEN_DEV_MAC_SIZE 0x0008
+#define JEN_DEV_LIC_OSET 0x0038
+#define JEN_DEV_LIC_SIZE 0x0010
+/*----------------------------------------------------------------------------*/
 #define JEN_DEV_ID_CHARSIZE 32
 #define JEN_DEV_ID_UNKOWN 0xFF
 /*----------------------------------------------------------------------------*/
 typedef struct _jen_flash_id_t
 {
 	unsigned char jen_id, man_id, dev_id;
-	unsigned int dev_size;
 	char name[JEN_DEV_ID_CHARSIZE];
 }
 jen_flash_id_t;
 /*----------------------------------------------------------------------------*/
 typedef struct _jen_dev_id_t
 {
-	unsigned int jen_id, jen_code_start;
+	unsigned int jen_id;
 	char name[JEN_DEV_ID_CHARSIZE];
 }
 jen_dev_id_t;
@@ -87,6 +92,7 @@ jen_msg_t;
 typedef struct _jen_dev_t
 {
 	unsigned char man_id, dev_id;
+	unsigned char mac_id[JEN_DEV_MAC_SIZE], lic_id[JEN_DEV_LIC_SIZE];
 	unsigned int jen_id;
 	char *pfilename;
 	jen_flash_id_t *pflash;
@@ -99,6 +105,7 @@ int jen_device_init(ADeviceJEN_t* aDevice);
 int jen_device_info(ASerialPort_t* aPort, ADeviceJEN_t* aDevice);
 int jen_device_flash(ASerialPort_t* aPort, ADeviceJEN_t* aDevice);
 int jen_device_verify(ASerialPort_t* aPort, ADeviceJEN_t* aDevice);
+int jen_device_read_maclic(ASerialPort_t* aPort, ADeviceJEN_t* aDevice);
 /*----------------------------------------------------------------------------*/
 #endif
 /*----------------------------------------------------------------------------*/

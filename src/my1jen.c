@@ -6,22 +6,22 @@
 #include <string.h>
 /*----------------------------------------------------------------------------*/
 static jen_flash_id_t FLASH_DEVS[] = {
-	{4,0x05,0x05,0x08000*2,"ST M25P05-A"},
-	{0,0x10,0x10,0x08000*4,"ST M25P10-A"},
-	{5,0x11,0x11,0x08000*8,"ST M25P20-A"},
-	{1,0xBF,0x49,0x08000*4,"SST 25VF010A"},
-	{2,0x1F,0x60,0x08000*2,"Atmel 25F512"},
-	{8,0xCC,0xEE,0x08000*4,"Internal Flash (JN516x)"},
-	{3,0x12,0x12,0x10000*8,"ST M25P40"}
+	{4,0x05,0x05,"ST M25P05-A"},
+	{0,0x10,0x10,"ST M25P10-A"},
+	{5,0x11,0x11,"ST M25P20-A"},
+	{1,0xBF,0x49,"SST 25VF010A"},
+	{2,0x1F,0x60,"Atmel 25F512"},
+	{8,0xCC,0xEE,"Internal Flash (JN516x)"},
+	{3,0x12,0x12,"ST M25P40"}
 };
 /*----------------------------------------------------------------------------*/
 static int FLASH_DEVS_SIZE = sizeof(FLASH_DEVS)/sizeof(jen_flash_id_t);
 /*----------------------------------------------------------------------------*/
 static jen_dev_id_t JENNIC_DEVS[] = {
-	{0x10804686,0x0000,"JN5148(MINE)"},
-	{0x10002000,0x0000,"JN5139"},
-	{0x00005686,0x0000,"JN5142"},
-	{0x10404686,0x0000,"JN5148"}
+	{0x10804686,"JN5148(MINE)"},
+	{0x10002000,"JN5139"},
+	{0x00005686,"JN5142"},
+	{0x10404686,"JN5148"}
 };
 /*----------------------------------------------------------------------------*/
 static int JENNIC_DEVS_SIZE = sizeof(JENNIC_DEVS)/sizeof(jen_dev_id_t);
@@ -330,7 +330,7 @@ int jen_device_flash(ASerialPort_t* aPort, ADeviceJEN_t* aDevice)
 		/* prepare message length here */
 		aDevice->message.length = FLASH_WRITE_REQ_LEN + buffsize;
 		/* prepare write address */
-		*paddr = aDevice->pdevice->jen_code_start + tellthis;
+		*paddr = JEN_DEV_CODE_ADDR + tellthis;
 		/* write flash */
 		printf("%3d%%\b\b\b\b",tellthis*100/tellsize);
 		error = jen_write_flash(aPort,aDevice);
@@ -406,7 +406,7 @@ int jen_device_verify(ASerialPort_t* aPort, ADeviceJEN_t* aDevice)
 	while((buffsize=fread(pbuff,1,MAX_READ_BUFFER,pbinfile))>0)
 	{
 		/* prepare message address & length here */
-		*paddr = aDevice->pdevice->jen_code_start + tellthis;
+		*paddr = JEN_DEV_CODE_ADDR + tellthis;
 		*pleng = (unsigned short) buffsize;
 		/* read flash */
 		printf("%3d%%\b\b\b\b",tellthis*100/tellsize);
@@ -423,6 +423,42 @@ int jen_device_verify(ASerialPort_t* aPort, ADeviceJEN_t* aDevice)
 		tellthis += buffsize;
 	}
 	fclose(pbinfile);
+	return error;
+}
+/*----------------------------------------------------------------------------*/
+int jen_device_read_maclic(ASerialPort_t* aPort, ADeviceJEN_t* aDevice)
+{
+	int error = JEN_MSG_OK, loop;
+	unsigned int *paddr;
+	unsigned short *pleng;
+	/* get id */
+	error = jen_device_info(aPort,aDevice);
+	if(error) return error+JEN_MSG_OFF_DEVICE_INFO;
+	/* select flash */
+	error = jen_select_flash(aPort,aDevice);
+	if(error) return error+JEN_MSG_OFF_FLASH_SELECT;
+	/* prepare pointers */
+	paddr = (unsigned int*) aDevice->message.data;
+	pleng = (unsigned short*) &aDevice->message.data[FLASH_READ_ADDR_SIZE];
+	/* prepare message address & length here */
+	*paddr = JEN_DEV_MAC_OSET;
+	*pleng = JEN_DEV_MAC_SIZE;
+	/* read mac */
+	error = jen_read_flash(aPort,aDevice);
+	if(error) return error+JEN_MSG_OFF_FLASH_READ;
+	/* save mac */
+	for(loop=0;loop<JEN_DEV_MAC_SIZE;loop++)
+		aDevice->mac_id[loop] = aDevice->message.data[loop+1];
+	/* prepare message address & length here */
+	*paddr = JEN_DEV_LIC_OSET;
+	*pleng = JEN_DEV_LIC_SIZE;
+	/* read lic */
+	error = jen_read_flash(aPort,aDevice);
+	if(error) return error+JEN_MSG_OFF_FLASH_READ;
+	/* save lic */
+	for(loop=0;loop<JEN_DEV_LIC_SIZE;loop++)
+		aDevice->lic_id[loop] = aDevice->message.data[loop+1];
+	/* done */
 	return error;
 }
 /*----------------------------------------------------------------------------*/

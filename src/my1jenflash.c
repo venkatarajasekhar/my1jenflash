@@ -63,6 +63,7 @@ void print_portscan(ASerialPort_t* aPort)
 /*----------------------------------------------------------------------------*/
 void show_device(ADeviceJEN_t* aDevice)
 {
+	int loop;
 	printf("--------------------\n");
 	printf("|Device Information|\n");
 	printf("--------------------\n");
@@ -77,6 +78,14 @@ void show_device(ADeviceJEN_t* aDevice)
 			aDevice->man_id,aDevice->dev_id);
 	else
 		printf("%s (%d)\n",aDevice->pflash->name,aDevice->pflash->jen_id);
+	printf("MAC Info: 0x");
+	for(loop=0;loop<JEN_DEV_MAC_SIZE;loop++)
+		printf("%02X",aDevice->mac_id[loop]);
+	printf("\n");
+	printf("ZBL Info: 0x");
+	for(loop=0;loop<JEN_DEV_LIC_SIZE;loop++)
+		printf("%02X",aDevice->lic_id[loop]);
+	printf("\n");
 	printf("------------------\n");
 	printf("|Information Ends|\n");
 	printf("------------------\n");
@@ -89,9 +98,17 @@ int info_device(ASerialPort_t* aPort, ADeviceJEN_t* aDevice)
 	error = jen_device_info(aPort,aDevice);
 	printf("\r                                            \r");
 	if(error)
+	{
 		printf("[ERROR] Cannot get device info? (%d)\n",error);
-	else
-		show_device(aDevice);
+		return error;
+	}
+	error = jen_device_read_maclic(aPort,aDevice);
+	if(error)
+	{
+		printf("[ERROR] Cannot get MAC & LIC info? (%d)\n",error);
+		return error;
+	}
+	show_device(aDevice);
 	return error;
 }
 /*----------------------------------------------------------------------------*/
